@@ -399,9 +399,10 @@ class TestInboundIntegration:
         # Pending action should be cleaned up
         assert pending_actions.get("gone0001") is None
 
+    @patch("sase_chop_telegram.scripts.sase_chop_tg_inbound._launch_agent")
     @patch("sase_chop_telegram.scripts.sase_chop_tg_inbound.telegram_client")
     def test_saves_offset_after_processing(
-        self, mock_tg: MagicMock
+        self, mock_tg: MagicMock, _mock_launch: MagicMock
     ) -> None:
         """Offset file is updated after processing updates."""
         text_msg = SimpleNamespace(text="random message")

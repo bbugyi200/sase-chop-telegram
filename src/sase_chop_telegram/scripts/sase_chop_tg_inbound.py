@@ -7,7 +7,7 @@ import json
 import sys
 from typing import Any
 
-from sase_chop_telegram import pending_actions, telegram_client
+from sase_chop_telegram import credentials, pending_actions, telegram_client
 from sase_chop_telegram.callback_data import decode
 from sase_chop_telegram.inbound import (
     ResponseAction,
@@ -103,15 +103,40 @@ def _handle_callback(
     pending_actions.remove(response.notif_id_prefix)
 
 
+def _launch_agent(prompt: str) -> None:
+    """Launch a background sase agent from a Telegram prompt."""
+    from sase.agent_launcher import launch_agent_from_cwd
+
+    chat_id = credentials.get_chat_id()
+    try:
+        result = launch_agent_from_cwd(prompt)
+        display = prompt[:200] + ("..." if len(prompt) > 200 else "")
+        telegram_client.send_message(
+            chat_id,
+            f"Agent launched (PID {result.pid}, workspace #{result.workspace_num})\n\n{display}",
+        )
+    except Exception as e:
+        telegram_client.send_message(
+            chat_id,
+            f"Failed to launch agent: {e}",
+        )
+
+
 def _handle_text_message(text: str) -> None:
-    """Handle a text message (two-step feedback completion)."""
+    """Handle a text message: feedback completion, or new agent launch."""
     response = process_text_message(text)
-    if response is None:
+    if response is not None:
+        _write_response(response)
+        clear_awaiting_feedback()
+        pending_actions.remove(response.notif_id_prefix)
         return
 
-    _write_response(response)
-    clear_awaiting_feedback()
-    pending_actions.remove(response.notif_id_prefix)
+    # Skip Telegram bot commands
+    if text.startswith("/"):
+        return
+
+    # Launch a new agent with this text as the prompt
+    _launch_agent(text)
 
 
 def main(argv: list[str] | None = None) -> int:

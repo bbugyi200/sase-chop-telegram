@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from sase_chop_telegram.inbound import (
     clear_awaiting_feedback,
@@ -244,6 +244,131 @@ class TestProcessTextMessage:
     def test_without_awaiting(self) -> None:
         result = process_text_message("Random text")
         assert result is None
+
+
+class TestHandleTextMessageAgentLaunch:
+    """Tests for _handle_text_message agent launch behavior (script module)."""
+
+    def setup_method(self) -> None:
+        _cleanup()
+        self._patcher = patch(
+            "sase_chop_telegram.inbound.AWAITING_FEEDBACK_PATH", AWAITING_TEST_PATH
+        )
+        self._patcher.start()
+
+    def teardown_method(self) -> None:
+        self._patcher.stop()
+        _cleanup()
+
+    def test_launches_agent_for_plain_text(self) -> None:
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _handle_text_message,
+        )
+
+        with patch(
+            "sase_chop_telegram.scripts.sase_chop_tg_inbound._launch_agent"
+        ) as mock_launch:
+            _handle_text_message("List all open beads")
+            mock_launch.assert_called_once_with("List all open beads")
+
+    def test_slash_command_ignored(self) -> None:
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _handle_text_message,
+        )
+
+        with patch(
+            "sase_chop_telegram.scripts.sase_chop_tg_inbound._launch_agent"
+        ) as mock_launch:
+            _handle_text_message("/start")
+            mock_launch.assert_not_called()
+
+    def test_feedback_flow_does_not_launch_agent(self, tmp_path: Path) -> None:
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _handle_text_message,
+        )
+
+        save_awaiting_feedback(
+            "hitl0001",
+            {"action_type": "hitl", "artifacts_dir": str(tmp_path)},
+        )
+        with (
+            patch(
+                "sase_chop_telegram.scripts.sase_chop_tg_inbound._launch_agent"
+            ) as mock_launch,
+            patch(
+                "sase_chop_telegram.scripts.sase_chop_tg_inbound._write_response"
+            ),
+            patch(
+                "sase_chop_telegram.scripts.sase_chop_tg_inbound.pending_actions"
+            ),
+        ):
+            _handle_text_message("Some feedback text")
+            mock_launch.assert_not_called()
+
+
+class TestLaunchAgent:
+    """Tests for the _launch_agent helper (script module)."""
+
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.telegram_client"
+    )
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.credentials"
+    )
+    def test_success_sends_confirmation(
+        self,
+        mock_creds: MagicMock,
+        mock_tg: MagicMock,
+    ) -> None:
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _launch_agent,
+        )
+
+        mock_creds.get_chat_id.return_value = "12345"
+        mock_result = MagicMock()
+        mock_result.pid = 42
+        mock_result.workspace_num = 3
+
+        with patch(
+            "sase.agent_launcher.launch_agent_from_cwd",
+            return_value=mock_result,
+        ):
+            _launch_agent("List all open beads")
+
+        mock_tg.send_message.assert_called_once()
+        call_args = mock_tg.send_message.call_args
+        assert call_args[0][0] == "12345"
+        assert "Agent launched" in call_args[0][1]
+        assert "PID 42" in call_args[0][1]
+        assert "List all open beads" in call_args[0][1]
+
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.telegram_client"
+    )
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.credentials"
+    )
+    def test_failure_sends_error(
+        self,
+        mock_creds: MagicMock,
+        mock_tg: MagicMock,
+    ) -> None:
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _launch_agent,
+        )
+
+        mock_creds.get_chat_id.return_value = "12345"
+
+        with patch(
+            "sase.agent_launcher.launch_agent_from_cwd",
+            side_effect=RuntimeError("No workspace available"),
+        ):
+            _launch_agent("Do something")
+
+        mock_tg.send_message.assert_called_once()
+        call_args = mock_tg.send_message.call_args
+        assert "Failed to launch agent" in call_args[0][1]
+        assert "No workspace available" in call_args[0][1]
 
 
 class TestAwaitingFeedbackState:
