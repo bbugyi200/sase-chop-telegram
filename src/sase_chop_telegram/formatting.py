@@ -55,7 +55,14 @@ def format_notification(
             # Dispatch by sender for non-action notifications
             if notification.sender == "axe" and notification.files:
                 return _format_error_digest(notification)
-            if notification.sender in ("crs", "fix-hook", "query", "run-agent"):
+            if notification.sender in (
+                "crs",
+                "fix-hook",
+                "query",
+                "run-agent",
+                "user-agent",
+                "user-workflow",
+            ):
                 return _format_workflow_complete(notification)
             return _format_generic(notification)
 
@@ -188,7 +195,10 @@ def _format_workflow_complete(
 ) -> tuple[str, InlineKeyboardMarkup | None, list[str]]:
     notes_text = escape_markdown_v2(_truncate_notes(n.notes))
     text = f"✅ *Workflow Complete*\n\n{notes_text}"
-    return text, None, []
+    attachments = [
+        str(p) for f in n.files if (p := Path(f).expanduser()).exists()
+    ]
+    return text, None, attachments
 
 
 def _format_error_digest(
