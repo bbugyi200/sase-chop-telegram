@@ -6,7 +6,11 @@ import os
 import time
 from pathlib import Path
 
-from sase.ace.tui_activity import get_tui_inactive_seconds, is_tui_running
+from sase.ace.tui_activity import (
+    get_tui_inactive_seconds,
+    get_tui_last_activity,
+    is_tui_running,
+)
 from sase.notifications.models import Notification
 from sase.notifications.store import load_notifications
 
@@ -16,9 +20,12 @@ DEFAULT_INACTIVE_THRESHOLD = 600
 
 
 def should_send() -> bool:
-    """Return True if user has been inactive long enough to warrant sending."""
-    if not is_tui_running():
-        return True
+    """Return True if user has been inactive long enough to warrant sending.
+
+    Uses the inactivity threshold regardless of whether the TUI is running.
+    When the TUI quits it writes the current time as the last activity
+    timestamp, so the inactivity clock restarts from that point.
+    """
     inactive = get_tui_inactive_seconds()
     if inactive is None:
         return False
@@ -39,6 +46,16 @@ def get_unsent_notifications() -> list[Notification]:
         return []
 
     last_sent_ts = float(LAST_SENT_FILE.read_text().strip())
+
+    # When the TUI is not running, advance the high-water mark to the TUI
+    # quit time (recorded as the last activity timestamp) so notifications
+    # received while the TUI was active are not re-sent via Telegram.
+    if not is_tui_running():
+        quit_ts = get_tui_last_activity()
+        if quit_ts is not None and quit_ts > last_sent_ts:
+            last_sent_ts = quit_ts
+            _write_high_water_mark(quit_ts)
+
     all_notifs = load_notifications()
     unsent = []
     for n in all_notifs:
