@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from pathlib import Path
 
 from sase_chop_telegram import pending_actions, rate_limit
 from sase_chop_telegram.credentials import get_chat_id
 from sase_chop_telegram.formatting import format_notification
 from sase_chop_telegram.outbound import get_unsent_notifications, mark_sent, should_send
+from sase_chop_telegram.pdf_convert import md_to_pdf
 from sase_chop_telegram.telegram_client import send_document, send_message
 
 
@@ -71,12 +73,23 @@ def main(argv: list[str] | None = None) -> int:
             sent.append(n)
             continue
 
-        msg = send_message(chat_id, text, reply_markup=keyboard)
+        msg = send_message(
+            chat_id, text, reply_markup=keyboard, parse_mode="MarkdownV2"
+        )
         rate_limit.record_send()
 
+        pdf_temps: list[Path] = []
         for file_path in attachments:
-            send_document(chat_id, file_path)
+            pdf_path = md_to_pdf(file_path)
+            if pdf_path:
+                pdf_temps.append(Path(pdf_path))
+                send_document(chat_id, pdf_path)
+            else:
+                send_document(chat_id, file_path)
             rate_limit.record_send()
+
+        for p in pdf_temps:
+            p.unlink(missing_ok=True)
 
         # Save pending action for actionable notifications
         if n.action in _ACTIONABLE_ACTIONS:

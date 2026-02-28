@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
 from telegram import Bot, InlineKeyboardMarkup, Message, Update
 
 from sase_chop_telegram.credentials import get_bot_token
+
+log = logging.getLogger(__name__)
 
 
 def _run_async(coro: Any) -> Any:
@@ -25,12 +28,32 @@ def send_message(
     chat_id: str,
     text: str,
     reply_markup: InlineKeyboardMarkup | None = None,
+    parse_mode: str | None = None,
 ) -> Message:
     """Send a text message to a Telegram chat."""
     bot = _get_bot()
-    return _run_async(
-        bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
-    )
+    try:
+        return _run_async(
+            bot.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
+            )
+        )
+    except Exception:
+        if parse_mode:
+            log.warning(
+                "Failed to send with parse_mode=%s, falling back to plain text",
+                parse_mode,
+                exc_info=True,
+            )
+            return _run_async(
+                bot.send_message(
+                    chat_id=chat_id, text=text, reply_markup=reply_markup
+                )
+            )
+        raise
 
 
 def send_document(
