@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 
 UPDATE_OFFSET_PATH = Path.home() / ".sase" / "telegram" / "update_offset.txt"
 AWAITING_FEEDBACK_PATH = Path.home() / ".sase" / "telegram" / "awaiting_feedback.json"
+IMAGES_DIR = Path.home() / ".sase" / "telegram" / "images"
 
 
 @dataclass
@@ -282,3 +284,33 @@ def process_text_message(text: str) -> ResponseAction | None:
         )
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Photo / image helpers
+# ---------------------------------------------------------------------------
+
+
+def make_image_filename(file_id: str) -> str:
+    """Generate a unique filename for a downloaded Telegram photo.
+
+    Format: ``{UTC_timestamp}_{file_id_prefix}.jpg``
+    """
+    ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    return f"{ts}_{file_id[:12]}.jpg"
+
+
+def build_photo_prompt(image_path: Path, caption: str | None) -> str:
+    """Build an agent prompt that references a downloaded image."""
+    if caption:
+        return (
+            f"The user sent an image via Telegram with the following caption:\n\n"
+            f"{caption}\n\n"
+            f"The image has been saved to: {image_path}\n"
+            f"Please read the image file and respond to the user's request."
+        )
+    return (
+        f"The user sent an image via Telegram.\n\n"
+        f"The image has been saved to: {image_path}\n"
+        f"Please read the image file and describe what you see."
+    )

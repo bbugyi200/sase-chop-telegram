@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from telegram import Bot, InlineKeyboardMarkup, Message, Update
@@ -70,3 +71,15 @@ def edit_message_reply_markup(
             chat_id=chat_id, message_id=message_id, reply_markup=reply_markup
         )
     )
+
+
+def download_file(file_id: str, destination: Path) -> Path:
+    """Download a Telegram file to a local path."""
+    bot = _get_bot()
+
+    async def _download() -> Path:
+        file_obj = await bot.get_file(file_id)
+        await file_obj.download_to_drive(custom_path=destination)
+        return destination
+
+    return _run_async(_download())

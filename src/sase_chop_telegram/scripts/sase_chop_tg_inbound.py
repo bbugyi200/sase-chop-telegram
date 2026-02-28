@@ -10,9 +10,12 @@ from typing import Any
 from sase_chop_telegram import credentials, pending_actions, telegram_client
 from sase_chop_telegram.callback_data import decode
 from sase_chop_telegram.inbound import (
+    IMAGES_DIR,
     ResponseAction,
+    build_photo_prompt,
     clear_awaiting_feedback,
     get_last_offset,
+    make_image_filename,
     process_callback,
     process_callback_twostep,
     process_text_message,
@@ -132,6 +135,46 @@ def _launch_agent(prompt: str) -> None:
         )
 
 
+def _handle_photo_message(message: Any) -> None:
+    """Handle a photo message: download and launch agent."""
+    photo = message.photo[-1]  # highest resolution
+    file_id: str = photo.file_id
+    filename = make_image_filename(file_id)
+    dest = IMAGES_DIR / filename
+
+    chat_id = credentials.get_chat_id()
+    try:
+        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+        telegram_client.download_file(file_id, dest)
+    except Exception as e:
+        telegram_client.send_message(chat_id, f"Failed to download photo: {e}")
+        return
+
+    prompt = build_photo_prompt(dest, message.caption)
+    _launch_agent(prompt)
+
+
+def _handle_document_image(message: Any) -> None:
+    """Handle an image sent as a document: download and launch agent."""
+    doc = message.document
+    file_id: str = doc.file_id
+    original_name = doc.file_name or "image.jpg"
+    ts = make_image_filename(file_id).split("_", 2)  # extract timestamp parts
+    filename = f"{ts[0]}_{ts[1]}_{original_name}"
+    dest = IMAGES_DIR / filename
+
+    chat_id = credentials.get_chat_id()
+    try:
+        IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+        telegram_client.download_file(file_id, dest)
+    except Exception as e:
+        telegram_client.send_message(chat_id, f"Failed to download image: {e}")
+        return
+
+    prompt = build_photo_prompt(dest, message.caption)
+    _launch_agent(prompt)
+
+
 def _handle_text_message(text: str) -> None:
     """Handle a text message: feedback completion, or new agent launch."""
     response = process_text_message(text)
@@ -166,8 +209,18 @@ def main(argv: list[str] | None = None) -> int:
     for update in updates:
         if update.callback_query:
             _handle_callback(update.callback_query, pending)
-        elif update.message and update.message.text:
-            _handle_text_message(update.message.text)
+        elif update.message:
+            msg = update.message
+            if msg.photo:
+                _handle_photo_message(msg)
+            elif (
+                msg.document
+                and msg.document.mime_type
+                and msg.document.mime_type.startswith("image/")
+            ):
+                _handle_document_image(msg)
+            elif msg.text:
+                _handle_text_message(msg.text)
 
     last_update_id = max(u.update_id for u in updates)
     save_offset(last_update_id + 1)

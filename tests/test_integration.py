@@ -349,6 +349,8 @@ class TestInboundIntegration:
         # Step 2: Text message with feedback
         text_msg = SimpleNamespace(
             text="Please fix the indentation on line 42",
+            photo=None,
+            document=None,
         )
         update2 = SimpleNamespace(
             update_id=301,
@@ -414,7 +416,7 @@ class TestInboundIntegration:
         self, mock_tg: MagicMock, _mock_launch: MagicMock
     ) -> None:
         """Offset file is updated after processing updates."""
-        text_msg = SimpleNamespace(text="random message")
+        text_msg = SimpleNamespace(text="random message", photo=None, document=None)
         update = SimpleNamespace(
             update_id=500,
             callback_query=None,
@@ -427,3 +429,55 @@ class TestInboundIntegration:
         assert OFFSET_TEST_FILE.exists()
         offset = int(OFFSET_TEST_FILE.read_text().strip())
         assert offset == 501  # update_id + 1
+
+    @patch("sase_chop_telegram.scripts.sase_chop_tg_inbound._launch_agent")
+    @patch("sase_chop_telegram.scripts.sase_chop_tg_inbound.credentials")
+    @patch("sase_chop_telegram.scripts.sase_chop_tg_inbound.telegram_client")
+    def test_photo_message_downloads_and_launches_agent(
+        self,
+        mock_tg: MagicMock,
+        mock_creds: MagicMock,
+        mock_launch: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        """Full flow: photo update -> download -> agent launched with correct prompt."""
+        mock_creds.get_chat_id.return_value = "12345"
+        mock_tg.download_file.return_value = tmp_path / "photo.jpg"
+
+        photo = SimpleNamespace(file_id="integtest_id_12345678")
+        message = SimpleNamespace(
+            photo=[photo],
+            caption="What is this diagram?",
+            text=None,
+            document=None,
+        )
+        update = SimpleNamespace(
+            update_id=600,
+            callback_query=None,
+            message=message,
+        )
+        mock_tg.get_updates.return_value = [update]
+
+        with patch(
+            "sase_chop_telegram.scripts.sase_chop_tg_inbound.IMAGES_DIR",
+            tmp_path,
+        ):
+            result = inbound_main(["--once"])
+
+        assert result == 0
+
+        # Photo should have been downloaded
+        mock_tg.download_file.assert_called_once()
+        call_args = mock_tg.download_file.call_args
+        assert call_args[0][0] == "integtest_id_12345678"
+
+        # Agent should have been launched with a prompt referencing the image
+        mock_launch.assert_called_once()
+        prompt = mock_launch.call_args[0][0]
+        assert "What is this diagram?" in prompt
+        assert str(tmp_path) in prompt
+
+        # Offset should have been saved
+        assert OFFSET_TEST_FILE.exists()
+        offset = int(OFFSET_TEST_FILE.read_text().strip())
+        assert offset == 601

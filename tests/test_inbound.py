@@ -7,9 +7,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from sase_chop_telegram.inbound import (
+    build_photo_prompt,
     clear_awaiting_feedback,
     get_last_offset,
     load_awaiting_feedback,
+    make_image_filename,
     process_callback,
     process_callback_twostep,
     process_text_message,
@@ -469,3 +471,134 @@ class TestAwaitingFeedbackState:
         # Should not raise
         clear_awaiting_feedback()
         assert load_awaiting_feedback() is None
+
+
+class TestBuildPhotoPrompt:
+    def test_with_caption(self, tmp_path: Path) -> None:
+        image_path = tmp_path / "photo.jpg"
+        result = build_photo_prompt(image_path, "What is this?")
+        assert "What is this?" in result
+        assert str(image_path) in result
+        assert "respond to the user's request" in result
+
+    def test_without_caption(self, tmp_path: Path) -> None:
+        image_path = tmp_path / "photo.jpg"
+        result = build_photo_prompt(image_path, None)
+        assert str(image_path) in result
+        assert "describe what you see" in result
+
+    def test_empty_string_caption(self, tmp_path: Path) -> None:
+        image_path = tmp_path / "photo.jpg"
+        result = build_photo_prompt(image_path, "")
+        # Empty string is falsy, should behave like None
+        assert "describe what you see" in result
+
+
+class TestMakeImageFilename:
+    def test_format(self) -> None:
+        filename = make_image_filename("ABCDEFghijklmnop")
+        assert filename.endswith(".jpg")
+        # Should contain the first 12 chars of file_id
+        assert "ABCDEFghijkl" in filename
+        # Should match format: YYYYMMDD_HHMMSS_<prefix>.jpg
+        parts = filename.rsplit(".", 1)[0].split("_")
+        assert len(parts) == 3  # date, time, file_id_prefix
+
+    def test_different_file_ids_produce_different_names(self) -> None:
+        name1 = make_image_filename("AAAAAAAAAAAA")
+        name2 = make_image_filename("BBBBBBBBBBBB")
+        assert name1 != name2
+
+
+class TestHandlePhotoMessage:
+    """Tests for _handle_photo_message (script module)."""
+
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.telegram_client"
+    )
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.credentials"
+    )
+    def test_downloads_highest_res_and_launches_agent(
+        self,
+        mock_creds: MagicMock,
+        mock_tg: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        from types import SimpleNamespace
+
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _handle_photo_message,
+        )
+
+        mock_creds.get_chat_id.return_value = "12345"
+        # download_file should write a file to the destination
+        mock_tg.download_file.return_value = tmp_path / "photo.jpg"
+
+        photo_small = SimpleNamespace(file_id="small_id_12345678")
+        photo_large = SimpleNamespace(file_id="large_id_12345678")
+        message = SimpleNamespace(
+            photo=[photo_small, photo_large],
+            caption="Describe this",
+        )
+
+        with (
+            patch(
+                "sase_chop_telegram.scripts.sase_chop_tg_inbound.IMAGES_DIR",
+                tmp_path,
+            ),
+            patch(
+                "sase_chop_telegram.scripts.sase_chop_tg_inbound._launch_agent"
+            ) as mock_launch,
+        ):
+            _handle_photo_message(message)
+
+        # Should use highest-res photo (last in list)
+        mock_tg.download_file.assert_called_once()
+        call_args = mock_tg.download_file.call_args
+        assert call_args[0][0] == "large_id_12345678"
+
+        # Should launch agent with photo prompt
+        mock_launch.assert_called_once()
+        prompt = mock_launch.call_args[0][0]
+        assert "Describe this" in prompt
+
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.telegram_client"
+    )
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.credentials"
+    )
+    def test_download_failure_sends_error(
+        self,
+        mock_creds: MagicMock,
+        mock_tg: MagicMock,
+        tmp_path: Path,
+    ) -> None:
+        from types import SimpleNamespace
+
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _handle_photo_message,
+        )
+
+        mock_creds.get_chat_id.return_value = "12345"
+        mock_tg.download_file.side_effect = RuntimeError("Network error")
+
+        photo = SimpleNamespace(file_id="fail_id_12345678")
+        message = SimpleNamespace(photo=[photo], caption=None)
+
+        with (
+            patch(
+                "sase_chop_telegram.scripts.sase_chop_tg_inbound.IMAGES_DIR",
+                tmp_path,
+            ),
+            patch(
+                "sase_chop_telegram.scripts.sase_chop_tg_inbound._launch_agent"
+            ) as mock_launch,
+        ):
+            _handle_photo_message(message)
+
+        mock_launch.assert_not_called()
+        mock_tg.send_message.assert_called_once()
+        error_msg = mock_tg.send_message.call_args[0][1]
+        assert "Failed to download photo" in error_msg
