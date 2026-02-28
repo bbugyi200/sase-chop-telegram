@@ -17,6 +17,9 @@ MAX_MESSAGE_LENGTH = 4096
 # Truncation threshold for plan content
 PLAN_TRUNCATION_THRESHOLD = 3000
 
+# Truncation threshold for notes content in non-plan messages
+NOTES_TRUNCATION_THRESHOLD = 3500
+
 # Characters that must be escaped in MarkdownV2
 _MARKDOWN_V2_SPECIAL = r"_*[]()~`>#+-=|{}.!"
 
@@ -24,6 +27,14 @@ _MARKDOWN_V2_SPECIAL = r"_*[]()~`>#+-=|{}.!"
 def escape_markdown_v2(text: str) -> str:
     """Escape special characters for Telegram MarkdownV2 format."""
     return re.sub(r"([" + re.escape(_MARKDOWN_V2_SPECIAL) + r"])", r"\\\1", text)
+
+
+def _truncate_notes(notes: list[str], threshold: int = NOTES_TRUNCATION_THRESHOLD) -> str:
+    """Join notes and truncate if exceeding threshold."""
+    text = "\n".join(notes)
+    if len(text) > threshold:
+        text = text[:threshold] + "\n\n... (see TUI for full output)"
+    return text
 
 
 def format_notification(
@@ -58,7 +69,7 @@ def _format_plan_approval(
     n: Notification,
 ) -> tuple[str, InlineKeyboardMarkup | None, list[str]]:
     prefix = _notif_prefix(n)
-    notes_text = escape_markdown_v2("\n".join(n.notes))
+    notes_text = escape_markdown_v2(_truncate_notes(n.notes))
     attachments: list[str] = []
 
     plan_content = ""
@@ -101,7 +112,7 @@ def _format_plan_approval(
 
 def _format_hitl(n: Notification) -> tuple[str, InlineKeyboardMarkup | None, list[str]]:
     prefix = _notif_prefix(n)
-    notes_text = escape_markdown_v2("\n".join(n.notes))
+    notes_text = escape_markdown_v2(_truncate_notes(n.notes))
     text = f"🔧 *HITL Request*\n\n{notes_text}"
 
     keyboard = InlineKeyboardMarkup(
@@ -129,7 +140,7 @@ def _format_user_question(
     n: Notification,
 ) -> tuple[str, InlineKeyboardMarkup | None, list[str]]:
     prefix = _notif_prefix(n)
-    notes_text = escape_markdown_v2("\n".join(n.notes))
+    notes_text = escape_markdown_v2(_truncate_notes(n.notes))
     text = f"❓ *Question*\n\n{notes_text}"
 
     # Try to load question options from request file
@@ -175,7 +186,7 @@ def _format_user_question(
 def _format_workflow_complete(
     n: Notification,
 ) -> tuple[str, InlineKeyboardMarkup | None, list[str]]:
-    notes_text = escape_markdown_v2("\n".join(n.notes))
+    notes_text = escape_markdown_v2(_truncate_notes(n.notes))
     text = f"✅ *Workflow Complete*\n\n{notes_text}"
     return text, None, []
 
@@ -183,7 +194,7 @@ def _format_workflow_complete(
 def _format_error_digest(
     n: Notification,
 ) -> tuple[str, InlineKeyboardMarkup | None, list[str]]:
-    notes_text = escape_markdown_v2("\n".join(n.notes))
+    notes_text = escape_markdown_v2(_truncate_notes(n.notes))
     text = f"⚠️ *Error Digest*\n\n{notes_text}"
     attachments = [f for f in n.files if Path(f).exists()]
     return text, None, attachments
@@ -193,6 +204,6 @@ def _format_generic(
     n: Notification,
 ) -> tuple[str, InlineKeyboardMarkup | None, list[str]]:
     sender = escape_markdown_v2(n.sender)
-    notes_text = escape_markdown_v2("\n".join(n.notes))
+    notes_text = escape_markdown_v2(_truncate_notes(n.notes))
     text = f"🔔 *{sender}*\n\n{notes_text}"
     return text, None, []

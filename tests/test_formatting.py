@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from sase.notifications.models import Notification
 from sase_chop_telegram.formatting import (
+    NOTES_TRUNCATION_THRESHOLD,
     PLAN_TRUNCATION_THRESHOLD,
     escape_markdown_v2,
     format_notification,
@@ -230,3 +231,43 @@ class TestFormatGeneric:
         assert "Something happened" in text
         assert keyboard is None
         assert attachments == []
+
+
+class TestNoteTruncation:
+    def test_short_notes_not_truncated(self):
+        n = _make_notification(
+            action="HITL",
+            sender="hitl",
+            notes=["Short HITL output"],
+        )
+        text, _, _ = format_notification(n)
+        assert "see TUI for full output" not in text
+
+    def test_long_hitl_notes_truncated(self):
+        long_note = "x" * (NOTES_TRUNCATION_THRESHOLD + 500)
+        n = _make_notification(
+            action="HITL",
+            sender="hitl",
+            notes=[long_note],
+        )
+        text, _, _ = format_notification(n)
+        assert "see TUI for full output" in text
+
+    def test_long_generic_notes_truncated(self):
+        long_note = "y" * (NOTES_TRUNCATION_THRESHOLD + 100)
+        n = _make_notification(
+            sender="unknown",
+            notes=[long_note],
+        )
+        text, _, _ = format_notification(n)
+        assert "see TUI for full output" in text
+
+    def test_long_error_digest_notes_truncated(self):
+        long_note = "z" * (NOTES_TRUNCATION_THRESHOLD + 100)
+        n = _make_notification(
+            sender="axe",
+            notes=[long_note],
+            files=["/nonexistent/digest.txt"],
+        )
+        text, _, _ = format_notification(n)
+        assert "see TUI for full output" in text
