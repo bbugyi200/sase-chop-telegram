@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ from sase_chop_telegram.outbound import get_unsent_notifications, mark_sent, sho
 from sase_chop_telegram.pdf_convert import md_to_pdf
 from sase_chop_telegram.telegram_client import send_document, send_message
 
+log = logging.getLogger(__name__)
 
 # Actions that should be tracked as pending (user needs to respond)
 _ACTIONABLE_ACTIONS = {"PlanApproval", "HITL", "UserQuestion"}
@@ -52,7 +54,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     chat_id = get_chat_id() if not args.dry_run else "DRY_RUN"
-    sent = []
 
     for n in notifications:
         # Check rate limit before sending
@@ -70,7 +71,9 @@ def main(argv: list[str] | None = None) -> int:
             if attachments:
                 print(f"Attachments: {attachments}")
             print()
-            sent.append(n)
+            # Advance high-water mark after each notification to prevent
+            # re-sending if a later notification fails.
+            mark_sent([n])
             continue
 
         msg = send_message(
@@ -78,15 +81,28 @@ def main(argv: list[str] | None = None) -> int:
         )
         rate_limit.record_send()
 
+        # Advance high-water mark immediately after the text message is
+        # sent so that a failure in attachment processing won't cause the
+        # text message to be re-sent on the next tick.
+        mark_sent([n])
+
         pdf_temps: list[Path] = []
         for file_path in attachments:
-            pdf_path = md_to_pdf(file_path)
-            if pdf_path:
-                pdf_temps.append(Path(pdf_path))
-                send_document(chat_id, pdf_path)
-            else:
-                send_document(chat_id, file_path)
-            rate_limit.record_send()
+            try:
+                pdf_path = md_to_pdf(file_path)
+                if pdf_path:
+                    pdf_temps.append(Path(pdf_path))
+                    send_document(chat_id, pdf_path)
+                else:
+                    send_document(chat_id, file_path)
+                rate_limit.record_send()
+            except Exception:
+                log.warning(
+                    "Failed to send attachment %s for notification %s",
+                    file_path,
+                    n.id[:8],
+                    exc_info=True,
+                )
 
         for p in pdf_temps:
             p.unlink(missing_ok=True)
@@ -104,9 +120,6 @@ def main(argv: list[str] | None = None) -> int:
                 },
             )
 
-        sent.append(n)
-
-    mark_sent(sent)
     return 0
 
 
