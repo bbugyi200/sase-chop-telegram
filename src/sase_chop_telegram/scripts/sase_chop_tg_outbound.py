@@ -4,6 +4,17 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
+
+from sase_chop_telegram import pending_actions, rate_limit
+from sase_chop_telegram.credentials import get_chat_id
+from sase_chop_telegram.formatting import format_notification
+from sase_chop_telegram.outbound import get_unsent_notifications, mark_sent, should_send
+from sase_chop_telegram.telegram_client import send_document, send_message
+
+
+# Actions that should be tracked as pending (user needs to respond)
+_ACTIONABLE_ACTIONS = {"PlanApproval", "HITL", "UserQuestion"}
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -16,14 +27,73 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Print what would be sent without actually sending",
     )
+    parser.add_argument(
+        "--context",
+        default=None,
+        help="Optional context string for lumberjack compatibility",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     """Outbound Telegram chop entry point."""
     args = _parse_args(argv)
-    print(f"sase_chop_tg_outbound: dry_run={args.dry_run}")
-    print("Outbound Telegram chop not yet implemented.")
+
+    # Clean up stale pending actions
+    pending_actions.cleanup_stale()
+
+    if not should_send():
+        return 0
+
+    notifications = get_unsent_notifications()
+    if not notifications:
+        return 0
+
+    chat_id = get_chat_id() if not args.dry_run else "DRY_RUN"
+    sent = []
+
+    for n in notifications:
+        # Check rate limit before sending
+        if not args.dry_run and not rate_limit.check_rate_limit():
+            wait = rate_limit.wait_time()
+            time.sleep(wait)
+
+        text, keyboard, attachments = format_notification(n)
+
+        if args.dry_run:
+            print(f"--- Notification {n.id} ---")
+            print(f"Text: {text}")
+            if keyboard:
+                print(f"Keyboard: {keyboard.inline_keyboard}")
+            if attachments:
+                print(f"Attachments: {attachments}")
+            print()
+            sent.append(n)
+            continue
+
+        msg = send_message(chat_id, text, reply_markup=keyboard)
+        rate_limit.record_send()
+
+        for file_path in attachments:
+            send_document(chat_id, file_path)
+            rate_limit.record_send()
+
+        # Save pending action for actionable notifications
+        if n.action in _ACTIONABLE_ACTIONS:
+            pending_actions.add(
+                n.id[:8],
+                {
+                    "notification_id": n.id,
+                    "action": n.action,
+                    "action_data": n.action_data,
+                    "message_id": msg.message_id,
+                    "chat_id": chat_id,
+                },
+            )
+
+        sent.append(n)
+
+    mark_sent(sent)
     return 0
 
 

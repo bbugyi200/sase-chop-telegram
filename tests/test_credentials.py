@@ -15,7 +15,9 @@ class TestGetBotToken:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="my-secret-token\n", stderr=""
         )
-        with patch("sase_chop_telegram.credentials.subprocess.run", return_value=mock_result) as mock_run:
+        with patch(
+            "sase_chop_telegram.credentials.subprocess.run", return_value=mock_result
+        ) as mock_run:
             token = get_bot_token()
             assert token == "my-secret-token"
             mock_run.assert_called_once_with(
@@ -31,7 +33,9 @@ class TestGetBotToken:
         mock_result = subprocess.CompletedProcess(
             args=[], returncode=0, stdout="token\n", stderr=""
         )
-        with patch("sase_chop_telegram.credentials.subprocess.run", return_value=mock_result) as mock_run:
+        with patch(
+            "sase_chop_telegram.credentials.subprocess.run", return_value=mock_result
+        ) as mock_run:
             get_bot_token()
             get_bot_token()
             mock_run.assert_called_once()

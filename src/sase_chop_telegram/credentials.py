@@ -21,9 +21,7 @@ def get_chat_id() -> str:
     """Get the Telegram chat ID from the SASE_TELEGRAM_BOT_CHAT_ID env var."""
     value = os.environ.get("SASE_TELEGRAM_BOT_CHAT_ID")
     if not value:
-        raise RuntimeError(
-            "SASE_TELEGRAM_BOT_CHAT_ID environment variable is not set"
-        )
+        raise RuntimeError("SASE_TELEGRAM_BOT_CHAT_ID environment variable is not set")
     return value
 
 
@@ -31,7 +29,5 @@ def get_bot_username() -> str:
     """Get the Telegram bot username from the SASE_TELEGRAM_BOT_USERNAME env var."""
     value = os.environ.get("SASE_TELEGRAM_BOT_USERNAME")
     if not value:
-        raise RuntimeError(
-            "SASE_TELEGRAM_BOT_USERNAME environment variable is not set"
-        )
+        raise RuntimeError("SASE_TELEGRAM_BOT_USERNAME environment variable is not set")
     return value

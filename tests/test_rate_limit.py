@@ -11,9 +11,7 @@ class TestRateLimit:
     def setup_method(self) -> None:
         self.tmp_path = Path("/tmp/test_rate_limit.json")
         self.tmp_path.unlink(missing_ok=True)
-        self._patcher = patch.object(
-            rate_limit, "RATE_LIMIT_PATH", self.tmp_path
-        )
+        self._patcher = patch.object(rate_limit, "RATE_LIMIT_PATH", self.tmp_path)
         self._patcher.start()
 
     def teardown_method(self) -> None:

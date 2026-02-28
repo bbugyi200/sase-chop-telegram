@@ -24,9 +24,7 @@ def _load() -> dict[str, Any]:
 def _save(data: dict[str, Any]) -> None:
     """Atomically write pending actions to disk."""
     PENDING_ACTIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(
-        dir=PENDING_ACTIONS_PATH.parent, suffix=".tmp"
-    )
+    fd, tmp_path = tempfile.mkstemp(dir=PENDING_ACTIONS_PATH.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2)

@@ -38,9 +38,7 @@ def _load_timestamps() -> list[float]:
 def _save_timestamps(timestamps: list[float]) -> None:
     """Atomically write send timestamps to disk."""
     RATE_LIMIT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(
-        dir=RATE_LIMIT_PATH.parent, suffix=".tmp"
-    )
+    fd, tmp_path = tempfile.mkstemp(dir=RATE_LIMIT_PATH.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(timestamps, f)
