@@ -187,6 +187,18 @@ class TestFormatWorkflowComplete:
         assert keyboard is None
         assert attachments == []
 
+    def test_includes_agent_name(self):
+        n = _make_notification(
+            sender="user-agent",
+            notes=["Agent completed: my-workflow"],
+            action_data={"agent_name": "c"},
+        )
+        text, keyboard, attachments = format_notification(n)
+
+        assert "Workflow Complete" in text
+        assert "\\[c\\]" in text
+        assert keyboard is None
+
 
 class TestFormatErrorDigest:
     def test_with_digest_file(self):

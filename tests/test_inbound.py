@@ -370,6 +370,74 @@ class TestLaunchAgent:
         assert "Failed to launch agent" in call_args[0][1]
         assert "No workspace available" in call_args[0][1]
 
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.telegram_client"
+    )
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.credentials"
+    )
+    def test_auto_name_prepended_when_no_name_directive(
+        self,
+        mock_creds: MagicMock,
+        mock_tg: MagicMock,
+    ) -> None:
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _launch_agent,
+        )
+
+        mock_creds.get_chat_id.return_value = "12345"
+        mock_result = MagicMock()
+        mock_result.pid = 42
+        mock_result.workspace_num = 3
+
+        with (
+            patch(
+                "sase.agent_names.get_next_auto_name",
+                return_value="c",
+            ),
+            patch(
+                "sase.agent_launcher.launch_agent_from_cwd",
+                return_value=mock_result,
+            ) as mock_launch,
+        ):
+            _launch_agent("List all open beads")
+
+        # The prompt passed to launch_agent_from_cwd should start with %n:c
+        launched_prompt = mock_launch.call_args[0][0]
+        assert launched_prompt.startswith("%n:c ")
+        assert "List all open beads" in launched_prompt
+
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.telegram_client"
+    )
+    @patch(
+        "sase_chop_telegram.scripts.sase_chop_tg_inbound.credentials"
+    )
+    def test_no_auto_name_when_name_directive_present(
+        self,
+        mock_creds: MagicMock,
+        mock_tg: MagicMock,
+    ) -> None:
+        from sase_chop_telegram.scripts.sase_chop_tg_inbound import (
+            _launch_agent,
+        )
+
+        mock_creds.get_chat_id.return_value = "12345"
+        mock_result = MagicMock()
+        mock_result.pid = 42
+        mock_result.workspace_num = 3
+
+        with patch(
+            "sase.agent_launcher.launch_agent_from_cwd",
+            return_value=mock_result,
+        ) as mock_launch:
+            _launch_agent("%n:foo List all open beads")
+
+        # The prompt should pass through unchanged (no auto-name prepended)
+        launched_prompt = mock_launch.call_args[0][0]
+        assert not launched_prompt.startswith("%n:foo %n:")
+        assert "%n:foo" in launched_prompt
+
 
 class TestAwaitingFeedbackState:
     def setup_method(self) -> None:

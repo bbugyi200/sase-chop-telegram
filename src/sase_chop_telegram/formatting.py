@@ -194,7 +194,12 @@ def _format_workflow_complete(
     n: Notification,
 ) -> tuple[str, InlineKeyboardMarkup | None, list[str]]:
     notes_text = escape_markdown_v2(_truncate_notes(n.notes))
-    text = f"✅ *Workflow Complete*\n\n{notes_text}"
+    agent_name = n.action_data.get("agent_name")
+    if agent_name:
+        escaped_name = escape_markdown_v2(agent_name)
+        text = f"✅ *Workflow Complete* \\[{escaped_name}\\]\n\n{notes_text}"
+    else:
+        text = f"✅ *Workflow Complete*\n\n{notes_text}"
     attachments = [
         str(p) for f in n.files if (p := Path(f).expanduser()).exists()
     ]
