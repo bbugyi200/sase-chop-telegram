@@ -77,17 +77,21 @@ def _patch_paths():
 class TestOutboundIntegration:
     """Integration tests for the outbound main() entry point."""
 
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
-    def test_exits_early_when_user_active(self, mock_inactive: MagicMock) -> None:
+    def test_exits_early_when_user_active(
+        self, mock_inactive: MagicMock, _mock_running: MagicMock
+    ) -> None:
         """When user is active, no messages should be sent."""
         mock_inactive.return_value = 100.0  # Below default 600s threshold
         result = outbound_main(["--dry-run"])
         assert result == 0
 
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.outbound.load_notifications")
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
     def test_first_run_initializes_without_sending(
-        self, mock_inactive: MagicMock, mock_load: MagicMock
+        self, mock_inactive: MagicMock, mock_load: MagicMock, _mock_running: MagicMock
     ) -> None:
         """First run creates high-water mark but doesn't send backlog."""
         mock_inactive.return_value = 700.0
@@ -96,6 +100,7 @@ class TestOutboundIntegration:
         assert LAST_SENT_TEST_FILE.exists()
         mock_load.assert_not_called()
 
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.send_message")
     @patch("sase_chop_telegram.outbound.load_notifications")
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
@@ -106,6 +111,7 @@ class TestOutboundIntegration:
         mock_inactive: MagicMock,
         mock_load: MagicMock,
         mock_send: MagicMock,
+        _mock_running: MagicMock,
     ) -> None:
         """Full flow: inactive user with unsent notification -> Telegram message sent."""
         mock_inactive.return_value = 700.0
@@ -130,6 +136,7 @@ class TestOutboundIntegration:
         # send_message(chat_id, text, reply_markup=keyboard) — text is 2nd positional arg
         assert "Workflow Complete" in call_args[0][1]
 
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.send_message")
     @patch("sase_chop_telegram.outbound.load_notifications")
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
@@ -140,6 +147,7 @@ class TestOutboundIntegration:
         mock_inactive: MagicMock,
         mock_load: MagicMock,
         mock_send: MagicMock,
+        _mock_running: MagicMock,
         tmp_path: Path,
     ) -> None:
         """Plan approval notifications are saved as pending actions."""
@@ -180,6 +188,7 @@ class TestOutboundIntegration:
         n = _make_notification(sender="crs", notes=["Done!"])
 
         with (
+            patch("sase_chop_telegram.outbound.is_tui_running", return_value=True),
             patch("sase_chop_telegram.outbound.get_tui_inactive_seconds", return_value=700.0),
             patch("sase_chop_telegram.outbound.load_notifications", return_value=[n]),
         ):

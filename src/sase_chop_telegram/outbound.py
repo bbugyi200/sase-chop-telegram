@@ -6,7 +6,7 @@ import os
 import time
 from pathlib import Path
 
-from sase.ace.tui_activity import get_tui_inactive_seconds
+from sase.ace.tui_activity import get_tui_inactive_seconds, is_tui_running
 from sase.notifications.models import Notification
 from sase.notifications.store import load_notifications
 
@@ -17,6 +17,8 @@ DEFAULT_INACTIVE_THRESHOLD = 600
 
 def should_send() -> bool:
     """Return True if user has been inactive long enough to warrant sending."""
+    if not is_tui_running():
+        return True
     inactive = get_tui_inactive_seconds()
     if inactive is None:
         return False

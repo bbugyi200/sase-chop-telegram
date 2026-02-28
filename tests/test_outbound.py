@@ -47,30 +47,51 @@ def _make_notification(
 
 
 class TestShouldSend:
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
-    def test_inactive_above_threshold(self, mock_inactive):
+    def test_inactive_above_threshold(self, mock_inactive, _mock_running):
         mock_inactive.return_value = 700.0
         assert should_send() is True
 
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
-    def test_active_below_threshold(self, mock_inactive):
+    def test_active_below_threshold(self, mock_inactive, _mock_running):
         mock_inactive.return_value = 300.0
         assert should_send() is False
 
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
-    def test_none_returns_false(self, mock_inactive):
+    def test_none_returns_false(self, mock_inactive, _mock_running):
         mock_inactive.return_value = None
         assert should_send() is False
 
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
-    def test_custom_threshold_via_env(self, mock_inactive, monkeypatch):
+    def test_custom_threshold_via_env(self, mock_inactive, _mock_running, monkeypatch):
         mock_inactive.return_value = 50.0
         monkeypatch.setenv(INACTIVE_THRESHOLD_VAR, "30")
         assert should_send() is True
 
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
-    def test_exactly_at_threshold(self, mock_inactive):
+    def test_exactly_at_threshold(self, mock_inactive, _mock_running):
         mock_inactive.return_value = 600.0
+        assert should_send() is True
+
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=False)
+    def test_tui_not_running_returns_true(self, _mock_running):
+        assert should_send() is True
+
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
+    @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
+    def test_tui_running_and_active_returns_false(self, mock_inactive, _mock_running):
+        mock_inactive.return_value = 30.0
+        assert should_send() is False
+
+    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
+    @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
+    def test_tui_running_and_inactive_returns_true(self, mock_inactive, _mock_running):
+        mock_inactive.return_value = 700.0
         assert should_send() is True
 
 
