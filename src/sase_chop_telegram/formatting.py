@@ -21,6 +21,9 @@ PLAN_CONTENT_MAX = 3500
 # Truncation threshold for notes content in non-plan messages
 NOTES_TRUNCATION_THRESHOLD = 3500
 
+# Max chars of prompt text to display in workflow-complete messages
+PROMPT_DISPLAY_MAX = 1000
+
 # Characters that must be escaped in MarkdownV2
 _MARKDOWN_V2_SPECIAL = r"_*[]()~`>#+-=|{}.!"
 
@@ -369,6 +372,14 @@ def _format_workflow_complete(
         text = f"✅ *Workflow Complete* \\[{escaped_name}\\]\n\n{notes_text}"
     else:
         text = f"✅ *Workflow Complete*\n\n{notes_text}"
+
+    prompt = n.action_data.get("prompt")
+    if prompt:
+        truncated = prompt if len(prompt) <= PROMPT_DISPLAY_MAX else (
+            prompt[:PROMPT_DISPLAY_MAX] + "…"
+        )
+        text += f"\n\n📝 *Prompt:*\n{escape_markdown_v2(truncated)}"
+
     attachments = [
         str(p) for f in n.files if (p := Path(f).expanduser()).exists()
     ]
