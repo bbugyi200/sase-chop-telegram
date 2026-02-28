@@ -29,8 +29,30 @@ def should_send() -> bool:
     inactive = get_tui_inactive_seconds()
     if inactive is None:
         return False
-    threshold = int(os.environ.get(INACTIVE_THRESHOLD_VAR, DEFAULT_INACTIVE_THRESHOLD))
+    threshold = _get_inactive_threshold()
     return inactive >= threshold
+
+
+def _get_inactive_threshold() -> int:
+    """Return the inactivity threshold in seconds.
+
+    Checks (in order): env var, sase config ``ace.inactive_seconds``, default.
+    """
+    env_val = os.environ.get(INACTIVE_THRESHOLD_VAR)
+    if env_val is not None:
+        return int(env_val)
+
+    try:
+        from sase.config import load_merged_config
+
+        cfg = load_merged_config()
+        ace_cfg = cfg.get("ace", {})
+        if isinstance(ace_cfg, dict) and "inactive_seconds" in ace_cfg:
+            return int(ace_cfg["inactive_seconds"])
+    except Exception:
+        pass
+
+    return DEFAULT_INACTIVE_THRESHOLD
 
 
 def get_unsent_notifications() -> list[Notification]:
