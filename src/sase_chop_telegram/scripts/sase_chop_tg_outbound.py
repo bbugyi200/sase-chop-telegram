@@ -5,10 +5,13 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 from sase.ace.tui_activity import is_idle
+from sase.chat_history import extract_response_from_chat_file
+from sase.sase_utils import get_sase_directory
 from sase_chop_telegram import pending_actions, rate_limit
 from sase_chop_telegram.credentials import get_chat_id
 from sase_chop_telegram.formatting import format_notification
@@ -20,6 +23,44 @@ log = logging.getLogger(__name__)
 
 # Actions that should be tracked as pending (user needs to respond)
 _ACTIONABLE_ACTIONS = {"PlanApproval", "HITL", "UserQuestion"}
+
+# Lazily resolved path to ~/.sase/chats/
+_chats_dir: str | None = None
+
+
+def _get_chats_dir() -> str:
+    """Return the chats directory path, caching on first call."""
+    global _chats_dir  # noqa: PLW0603
+    if _chats_dir is None:
+        _chats_dir = get_sase_directory("chats")
+    return _chats_dir
+
+
+def _is_chat_file(file_path: str) -> bool:
+    """Check if a file path points to a chat history file."""
+    resolved = str(Path(file_path).expanduser().resolve())
+    return resolved.startswith(_get_chats_dir())
+
+
+def _make_response_only_file(chat_path: str) -> Path | None:
+    """Extract just the response from a chat file and write to a temp file.
+
+    Returns the temp file path, or None if extraction fails.
+    """
+    response = extract_response_from_chat_file(chat_path)
+    if not response:
+        return None
+    original_name = Path(chat_path).stem
+    tmp = tempfile.NamedTemporaryFile(
+        prefix=f"response-{original_name}-",
+        suffix=".md",
+        delete=False,
+        mode="w",
+        encoding="utf-8",
+    )
+    tmp.write(response)
+    tmp.close()
+    return Path(tmp.name)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -88,14 +129,24 @@ def main(argv: list[str] | None = None) -> int:
         mark_sent([n])
 
         pdf_temps: list[Path] = []
+        response_temps: list[Path] = []
         for file_path in attachments:
             try:
-                pdf_path = md_to_pdf(file_path)
+                # For chat files, extract just the response instead of
+                # attaching the entire chat history.
+                actual_path = file_path
+                if _is_chat_file(file_path):
+                    response_file = _make_response_only_file(file_path)
+                    if response_file:
+                        response_temps.append(response_file)
+                        actual_path = str(response_file)
+
+                pdf_path = md_to_pdf(actual_path)
                 if pdf_path:
                     pdf_temps.append(Path(pdf_path))
                     send_document(chat_id, pdf_path)
                 else:
-                    send_document(chat_id, file_path)
+                    send_document(chat_id, actual_path)
                 rate_limit.record_send()
             except Exception:
                 log.warning(
@@ -105,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
                     exc_info=True,
                 )
 
-        for p in pdf_temps:
+        for p in pdf_temps + response_temps:
             p.unlink(missing_ok=True)
 
         # Save pending action for actionable notifications
