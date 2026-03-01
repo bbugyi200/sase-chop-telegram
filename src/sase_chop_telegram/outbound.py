@@ -5,10 +5,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from sase.ace.tui_activity import (
-    get_tui_last_activity,
-    is_tui_running,
-)
+from sase.ace.tui_activity import get_tui_last_activity
 from sase.notifications.models import Notification
 from sase.notifications.store import load_notifications
 
@@ -29,14 +26,15 @@ def get_unsent_notifications() -> list[Notification]:
 
     last_sent_ts = float(LAST_SENT_FILE.read_text().strip())
 
-    # When the TUI is not running, advance the high-water mark to the TUI
-    # quit time (recorded as the last activity timestamp) so notifications
-    # received while the TUI was active are not re-sent via Telegram.
-    if not is_tui_running():
-        quit_ts = get_tui_last_activity()
-        if quit_ts is not None and quit_ts > last_sent_ts:
-            last_sent_ts = quit_ts
-            _write_high_water_mark(quit_ts)
+    # Advance the high-water mark to the TUI's last activity time so
+    # notifications the user already saw during active TUI use are not
+    # re-sent via Telegram when the user later becomes idle.
+    # epoch=0 (manual idle via I key) is excluded so accumulated
+    # notifications are still delivered.
+    activity_ts = get_tui_last_activity()
+    if activity_ts is not None and activity_ts > 0 and activity_ts > last_sent_ts:
+        last_sent_ts = activity_ts
+        _write_high_water_mark(activity_ts)
 
     all_notifs = load_notifications()
     unsent = []
