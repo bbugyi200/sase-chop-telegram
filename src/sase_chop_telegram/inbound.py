@@ -10,7 +10,32 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
+
+
+def reconstruct_code_markers(text: str, entities: Sequence[Any] | None) -> str:
+    """Re-insert backtick markers around ``code`` and ``pre`` entities.
+
+    Telegram strips backticks and delivers them as MessageEntity objects.
+    This function reconstructs the original markdown so downstream handlers
+    (e.g. xprompt expansion) can honour backtick-protected text.
+    """
+    if not entities:
+        return text
+
+    # Process in reverse offset order so earlier positions stay valid.
+    for entity in sorted(entities, key=lambda e: e.offset, reverse=True):
+        start = entity.offset
+        end = start + entity.length
+        content = text[start:end]
+
+        if entity.type == "code":
+            text = text[:start] + f"`{content}`" + text[end:]
+        elif entity.type == "pre":
+            lang = getattr(entity, "language", None) or ""
+            text = text[:start] + f"```{lang}\n{content}\n```" + text[end:]
+
+    return text
 
 
 UPDATE_OFFSET_PATH = Path.home() / ".sase" / "telegram" / "update_offset.txt"

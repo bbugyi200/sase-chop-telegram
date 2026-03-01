@@ -19,6 +19,7 @@ from sase_chop_telegram.inbound import (
     process_callback,
     process_callback_twostep,
     process_text_message,
+    reconstruct_code_markers,
     save_awaiting_feedback,
     save_offset,
 )
@@ -150,7 +151,10 @@ def _handle_photo_message(message: Any) -> None:
         telegram_client.send_message(chat_id, f"Failed to download photo: {e}")
         return
 
-    prompt = build_photo_prompt(dest, message.caption)
+    caption = reconstruct_code_markers(
+        message.caption, message.caption_entities
+    ) if message.caption else message.caption
+    prompt = build_photo_prompt(dest, caption)
     _launch_agent(prompt)
 
 
@@ -171,7 +175,10 @@ def _handle_document_image(message: Any) -> None:
         telegram_client.send_message(chat_id, f"Failed to download image: {e}")
         return
 
-    prompt = build_photo_prompt(dest, message.caption)
+    caption = reconstruct_code_markers(
+        message.caption, message.caption_entities
+    ) if message.caption else message.caption
+    prompt = build_photo_prompt(dest, caption)
     _launch_agent(prompt)
 
 
@@ -220,7 +227,8 @@ def main(argv: list[str] | None = None) -> int:
             ):
                 _handle_document_image(msg)
             elif msg.text:
-                _handle_text_message(msg.text)
+                text = reconstruct_code_markers(msg.text, msg.entities)
+                _handle_text_message(text)
 
     last_update_id = max(u.update_id for u in updates)
     save_offset(last_update_id + 1)

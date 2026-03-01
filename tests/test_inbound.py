@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from sase_chop_telegram.inbound import (
@@ -15,6 +16,7 @@ from sase_chop_telegram.inbound import (
     process_callback,
     process_callback_twostep,
     process_text_message,
+    reconstruct_code_markers,
     save_awaiting_feedback,
     save_offset,
 )
@@ -508,6 +510,54 @@ class TestMakeImageFilename:
         name1 = make_image_filename("AAAAAAAAAAAA")
         name2 = make_image_filename("BBBBBBBBBBBB")
         assert name1 != name2
+
+
+class TestReconstructCodeMarkers:
+    def test_no_entities_returns_unchanged(self) -> None:
+        assert reconstruct_code_markers("hello world", []) == "hello world"
+
+    def test_none_entities_returns_unchanged(self) -> None:
+        assert reconstruct_code_markers("hello world", None) == "hello world"
+
+    def test_single_code_entity(self) -> None:
+        entity = SimpleNamespace(type="code", offset=0, length=4)
+        assert reconstruct_code_markers("#foo", [entity]) == "`#foo`"
+
+    def test_multiple_code_entities(self) -> None:
+        # "hello #foo and #bar"
+        entities = [
+            SimpleNamespace(type="code", offset=6, length=4),
+            SimpleNamespace(type="code", offset=15, length=4),
+        ]
+        result = reconstruct_code_markers("hello #foo and #bar", entities)
+        assert result == "hello `#foo` and `#bar`"
+
+    def test_pre_entity(self) -> None:
+        entity = SimpleNamespace(type="pre", offset=0, length=11, language=None)
+        result = reconstruct_code_markers("print('hi')", [entity])
+        assert result == "```\nprint('hi')\n```"
+
+    def test_pre_entity_with_language(self) -> None:
+        entity = SimpleNamespace(type="pre", offset=0, length=11, language="python")
+        result = reconstruct_code_markers("print('hi')", [entity])
+        assert result == "```python\nprint('hi')\n```"
+
+    def test_mixed_code_and_pre(self) -> None:
+        # "run #cmd then:\nprint('hi')"
+        text = "run #cmd then:\nprint('hi')"
+        entities = [
+            SimpleNamespace(type="code", offset=4, length=4),
+            SimpleNamespace(type="pre", offset=15, length=11, language=None),
+        ]
+        result = reconstruct_code_markers(text, entities)
+        assert result == "run `#cmd` then:\n```\nprint('hi')\n```"
+
+    def test_non_code_entities_ignored(self) -> None:
+        entities = [
+            SimpleNamespace(type="bold", offset=0, length=5),
+            SimpleNamespace(type="italic", offset=6, length=5),
+        ]
+        assert reconstruct_code_markers("hello world", entities) == "hello world"
 
 
 class TestHandlePhotoMessage:
