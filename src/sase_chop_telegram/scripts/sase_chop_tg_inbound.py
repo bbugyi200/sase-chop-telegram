@@ -182,6 +182,31 @@ def _handle_document_image(message: Any) -> None:
     _launch_agent(prompt)
 
 
+def _handle_slash_command(text: str) -> None:
+    """Dispatch a Telegram slash command to the appropriate handler."""
+    parts = text.split(None, 1)
+    command = parts[0].lower()
+    args = parts[1] if len(parts) > 1 else ""
+
+    if command == "/kill":
+        _handle_kill_command(args)
+    # Unknown commands are silently ignored (preserves original behavior)
+
+
+def _handle_kill_command(args: str) -> None:
+    """Handle /kill <agent_name> — terminate a running agent by name."""
+    from sase.agent_names import kill_named_agent
+
+    chat_id = credentials.get_chat_id()
+    name = args.strip()
+    if not name:
+        telegram_client.send_message(chat_id, "Usage: /kill <agent_name>")
+        return
+
+    result = kill_named_agent(name)
+    telegram_client.send_message(chat_id, result.message)
+
+
 def _handle_text_message(text: str) -> None:
     """Handle a text message: feedback completion, or new agent launch."""
     response = process_text_message(text)
@@ -191,8 +216,9 @@ def _handle_text_message(text: str) -> None:
         pending_actions.remove(response.notif_id_prefix)
         return
 
-    # Skip Telegram bot commands
+    # Dispatch Telegram slash commands
     if text.startswith("/"):
+        _handle_slash_command(text)
         return
 
     # Launch a new agent with this text as the prompt
