@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 
 from sase.ace.tui_activity import (
-    get_tui_inactive_seconds,
     get_tui_last_activity,
     is_tui_running,
 )
@@ -15,44 +13,6 @@ from sase.notifications.models import Notification
 from sase.notifications.store import load_notifications
 
 LAST_SENT_FILE = Path.home() / ".sase" / "telegram" / "last_sent_ts"
-INACTIVE_THRESHOLD_VAR = "SASE_TELEGRAM_INACTIVE_SECONDS"
-DEFAULT_INACTIVE_THRESHOLD = 600
-
-
-def should_send() -> bool:
-    """Return True if user has been inactive long enough to warrant sending.
-
-    Uses the inactivity threshold regardless of whether the TUI is running.
-    When the TUI quits it writes the current time as the last activity
-    timestamp, so the inactivity clock restarts from that point.
-    """
-    inactive = get_tui_inactive_seconds()
-    if inactive is None:
-        return False
-    threshold = _get_inactive_threshold()
-    return inactive >= threshold
-
-
-def _get_inactive_threshold() -> int:
-    """Return the inactivity threshold in seconds.
-
-    Checks (in order): env var, sase config ``ace.inactive_seconds``, default.
-    """
-    env_val = os.environ.get(INACTIVE_THRESHOLD_VAR)
-    if env_val is not None:
-        return int(env_val)
-
-    try:
-        from sase.config import load_merged_config
-
-        cfg = load_merged_config()
-        ace_cfg = cfg.get("ace", {})
-        if isinstance(ace_cfg, dict) and "inactive_seconds" in ace_cfg:
-            return int(ace_cfg["inactive_seconds"])
-    except Exception:
-        pass
-
-    return DEFAULT_INACTIVE_THRESHOLD
 
 
 def get_unsent_notifications() -> list[Notification]:

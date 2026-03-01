@@ -77,44 +77,37 @@ def _patch_paths():
 class TestOutboundIntegration:
     """Integration tests for the outbound main() entry point."""
 
-    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
-    @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
+    @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.is_idle", return_value=False)
     def test_exits_early_when_user_active(
-        self, mock_inactive: MagicMock, _mock_running: MagicMock
+        self, _mock_idle: MagicMock
     ) -> None:
         """When user is active, no messages should be sent."""
-        mock_inactive.return_value = 100.0  # Below default 600s threshold
         result = outbound_main(["--dry-run"])
         assert result == 0
 
-    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.outbound.load_notifications")
-    @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
+    @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.is_idle", return_value=True)
     def test_first_run_initializes_without_sending(
-        self, mock_inactive: MagicMock, mock_load: MagicMock, _mock_running: MagicMock
+        self, _mock_idle: MagicMock, mock_load: MagicMock
     ) -> None:
         """First run creates high-water mark but doesn't send backlog."""
-        mock_inactive.return_value = 700.0
         result = outbound_main(["--dry-run"])
         assert result == 0
         assert LAST_SENT_TEST_FILE.exists()
         mock_load.assert_not_called()
 
-    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.send_message")
     @patch("sase_chop_telegram.outbound.load_notifications")
-    @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
+    @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.is_idle", return_value=True)
     @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.get_chat_id")
     def test_sends_notification_when_inactive(
         self,
         mock_chat_id: MagicMock,
-        mock_inactive: MagicMock,
+        _mock_idle: MagicMock,
         mock_load: MagicMock,
         mock_send: MagicMock,
-        _mock_running: MagicMock,
     ) -> None:
         """Full flow: inactive user with unsent notification -> Telegram message sent."""
-        mock_inactive.return_value = 700.0
         mock_chat_id.return_value = "12345"
         mock_send.return_value = MagicMock(message_id=42)
 
@@ -136,22 +129,19 @@ class TestOutboundIntegration:
         # send_message(chat_id, text, reply_markup=keyboard) — text is 2nd positional arg
         assert "Workflow Complete" in call_args[0][1]
 
-    @patch("sase_chop_telegram.outbound.is_tui_running", return_value=True)
     @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.send_message")
     @patch("sase_chop_telegram.outbound.load_notifications")
-    @patch("sase_chop_telegram.outbound.get_tui_inactive_seconds")
+    @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.is_idle", return_value=True)
     @patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.get_chat_id")
     def test_saves_pending_action_for_plan_approval(
         self,
         mock_chat_id: MagicMock,
-        mock_inactive: MagicMock,
+        _mock_idle: MagicMock,
         mock_load: MagicMock,
         mock_send: MagicMock,
-        _mock_running: MagicMock,
         tmp_path: Path,
     ) -> None:
         """Plan approval notifications are saved as pending actions."""
-        mock_inactive.return_value = 700.0
         mock_chat_id.return_value = "12345"
         mock_send.return_value = MagicMock(message_id=99)
 
@@ -188,8 +178,7 @@ class TestOutboundIntegration:
         n = _make_notification(sender="crs", notes=["Done!"])
 
         with (
-            patch("sase_chop_telegram.outbound.is_tui_running", return_value=True),
-            patch("sase_chop_telegram.outbound.get_tui_inactive_seconds", return_value=700.0),
+            patch("sase_chop_telegram.scripts.sase_chop_tg_outbound.is_idle", return_value=True),
             patch("sase_chop_telegram.outbound.load_notifications", return_value=[n]),
         ):
             result = outbound_main(["--dry-run"])

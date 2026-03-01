@@ -8,10 +8,11 @@ import sys
 import time
 from pathlib import Path
 
+from sase.ace.tui_activity import is_idle
 from sase_chop_telegram import pending_actions, rate_limit
 from sase_chop_telegram.credentials import get_chat_id
 from sase_chop_telegram.formatting import format_notification
-from sase_chop_telegram.outbound import get_unsent_notifications, mark_sent, should_send
+from sase_chop_telegram.outbound import get_unsent_notifications, mark_sent
 from sase_chop_telegram.pdf_convert import md_to_pdf
 from sase_chop_telegram.telegram_client import send_document, send_message
 
@@ -46,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     # Clean up stale pending actions
     pending_actions.cleanup_stale()
 
-    if not should_send():
+    if not is_idle():
         return 0
 
     notifications = get_unsent_notifications()
