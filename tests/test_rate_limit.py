@@ -22,8 +22,8 @@ class TestRateLimit:
         assert rate_limit.check_rate_limit() is True
 
     def test_blocks_over_limit(self) -> None:
-        # Default is 5 messages per 10 seconds
-        for _ in range(5):
+        # Default is 8 messages per 15 seconds
+        for _ in range(8):
             rate_limit.record_send()
         assert rate_limit.check_rate_limit() is False
 
@@ -31,15 +31,15 @@ class TestRateLimit:
         assert rate_limit.wait_time() == 0.0
 
     def test_wait_time_positive_when_over_limit(self) -> None:
-        for _ in range(5):
+        for _ in range(8):
             rate_limit.record_send()
         wt = rate_limit.wait_time()
         assert wt > 0.0
 
     def test_old_timestamps_pruned(self) -> None:
-        # Simulate sends from 15 seconds ago (outside default 10s window)
-        old_time = time.time() - 15
-        rate_limit._save_timestamps([old_time] * 5)
+        # Simulate sends from 20 seconds ago (outside default 15s window)
+        old_time = time.time() - 20
+        rate_limit._save_timestamps([old_time] * 8)
         assert rate_limit.check_rate_limit() is True
 
     def test_custom_config_via_env(self) -> None:

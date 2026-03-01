@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from telegram import Bot, InlineKeyboardMarkup, Message, Update
+from telegram.error import NetworkError, RetryAfter, TimedOut
 
 from sase_chop_telegram.credentials import get_bot_token
 
 log = logging.getLogger(__name__)
+
+_MAX_RETRIES = 3
+_RETRY_BACKOFF_BASE = 2.0  # seconds
 
 
 def _run_async(coro: Any) -> Any:
@@ -19,11 +25,52 @@ def _run_async(coro: Any) -> Any:
     return asyncio.run(coro)
 
 
+def _with_retry(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator that retries on transient Telegram errors.
+
+    Handles RetryAfter (flood control), TimedOut, and NetworkError
+    with appropriate backoff between retries.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                return fn(*args, **kwargs)
+            except RetryAfter as e:
+                if attempt == _MAX_RETRIES:
+                    raise
+                wait = e.retry_after + 1
+                log.warning(
+                    "Rate limited by Telegram, retrying in %ds (attempt %d/%d)",
+                    wait,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                )
+                time.sleep(wait)
+            except (TimedOut, NetworkError) as e:
+                if attempt == _MAX_RETRIES:
+                    raise
+                wait = _RETRY_BACKOFF_BASE * (attempt + 1)
+                log.warning(
+                    "Transient Telegram error (%s), retrying in %.1fs (attempt %d/%d)",
+                    type(e).__name__,
+                    wait,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                )
+                time.sleep(wait)
+        raise RuntimeError("unreachable")
+
+    return wrapper
+
+
 def _get_bot() -> Bot:
     """Create a Bot instance with the stored token."""
     return Bot(token=get_bot_token())
 
 
+@_with_retry
 def send_message(
     chat_id: str,
     text: str,
@@ -56,6 +103,7 @@ def send_message(
         raise
 
 
+@_with_retry
 def send_document(
     chat_id: str,
     document: str | bytes,
@@ -68,12 +116,14 @@ def send_document(
     )
 
 
+@_with_retry
 def get_updates(offset: int | None = None, timeout: int = 0) -> list[Update]:
     """Fetch updates (new messages/callbacks) from the Telegram API."""
     bot = _get_bot()
     return _run_async(bot.get_updates(offset=offset, timeout=timeout))
 
 
+@_with_retry
 def answer_callback_query(callback_query_id: str, text: str | None = None) -> bool:
     """Answer a callback query from an inline keyboard button press."""
     bot = _get_bot()
@@ -82,6 +132,7 @@ def answer_callback_query(callback_query_id: str, text: str | None = None) -> bo
     )
 
 
+@_with_retry
 def edit_message_reply_markup(
     chat_id: str,
     message_id: int,
@@ -96,6 +147,7 @@ def edit_message_reply_markup(
     )
 
 
+@_with_retry
 def download_file(file_id: str, destination: Path) -> Path:
     """Download a Telegram file to a local path."""
     bot = _get_bot()

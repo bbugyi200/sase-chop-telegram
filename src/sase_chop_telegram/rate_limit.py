@@ -9,8 +9,8 @@ import time
 from pathlib import Path
 
 RATE_LIMIT_PATH = Path.home() / ".sase" / "telegram" / "rate_limit.json"
-DEFAULT_MAX_MESSAGES = 5
-DEFAULT_WINDOW_SECONDS = 10.0
+DEFAULT_MAX_MESSAGES = 8
+DEFAULT_WINDOW_SECONDS = 15.0
 
 
 def _get_config() -> tuple[int, float]:
