@@ -283,7 +283,13 @@ def _format_plan_approval(
                     "❌ Reject",
                     callback_data=callback_data.encode("plan", prefix, "reject"),
                 ),
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    "💬 Feedback",
+                    callback_data=callback_data.encode("plan", prefix, "feedback"),
+                ),
+            ],
         ]
     )
     return text, keyboard, attachments

@@ -235,6 +235,15 @@ def process_callback_twostep(
 
     action_data = action["action_data"]
 
+    if cb.action_type == "plan" and cb.choice == "feedback":
+        return (
+            cb.notif_id_prefix,
+            {
+                "action_type": "plan",
+                "response_dir": action_data["response_dir"],
+            },
+        )
+
     if cb.action_type == "hitl" and cb.choice == "feedback":
         return (
             cb.notif_id_prefix,
@@ -276,6 +285,18 @@ def process_text_message(text: str) -> ResponseAction | None:
 
     prefix: str = awaiting["prefix"]
     info: dict[str, Any] = awaiting["action_info"]
+
+    if info["action_type"] == "plan":
+        return ResponseAction(
+            action_type="plan",
+            notif_id_prefix=prefix,
+            response_path=Path(info["response_dir"]) / "plan_response.json",
+            response_data={
+                "action": "reject",
+                "feedback": text,
+            },
+            answer_text=None,
+        )
 
     if info["action_type"] == "hitl":
         return ResponseAction(

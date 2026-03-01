@@ -195,10 +195,12 @@ class TestFormatPlanApproval:
         assert "*Short Plan*" in text
         assert "Some content here" in text
         assert keyboard is not None
-        assert len(keyboard.inline_keyboard) == 1
+        assert len(keyboard.inline_keyboard) == 2
         assert len(keyboard.inline_keyboard[0]) == 2  # Approve + Reject
         assert "Approve" in keyboard.inline_keyboard[0][0].text
         assert "Reject" in keyboard.inline_keyboard[0][1].text
+        assert len(keyboard.inline_keyboard[1]) == 1  # Feedback
+        assert "Feedback" in keyboard.inline_keyboard[1][0].text
         assert attachments == []
 
         Path(plan_file).unlink()
